@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Sequence Sprint — Single-file Mind Game</title>
+<style>
+  :root{
+    --bg:#0f1720; --card:#0b1220; --accent:#40c4a4; --muted:#9aa7b2; --tile:#1b2630;
+    --win:#2ecc71; --lose:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Arial;background:linear-gradient(180deg,var(--bg),#071019);color:#e6eef3}
+  .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:28px}
+  .card{width:960px;max-width:96vw;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));border-radius:14px;padding:20px;box-shadow:0 12px 30px rgba(2,6,23,0.6);display:grid;grid-template-columns:1fr 320px;gap:18px}
+  header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between}
+  h1{font-size:20px;margin:0}
+  .muted{color:var(--muted);font-size:13px}
+  .left{padding:6px}
+  .center{display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px}
+  .meta{display:flex;gap:10px;align-items:center}
+  .bigscore{font-weight:700;font-size:28px}
+  .tiles{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+  .tile{width:64px;height:64px;border-radius:10px;background:var(--tile);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#d7e9ee;cursor:pointer;user-select:none;box-shadow:inset 0 -6px 14px rgba(0,0,0,0.6)}
+  .tile.small{width:48px;height:48px;font-size:16px}
+  .tile.active{outline:3px solid rgba(64,196,164,0.12);transform:scale(1.03)}
+  .tile.selected{background:linear-gradient(180deg,#69f0c4,#40c4a4);color:#062b24;box-shadow:0 6px 18px rgba(4,10,12,0.6)}
+  .hint{font-size:13px;color:var(--muted)}
+  .controls{display:flex;gap:8px;flex-wrap:wrap}
+  button.btn{background:var(--accent);border:none;padding:10px 14px;border-radius:10px;color:#042826;font-weight:700;cursor:pointer}
+  button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+  .sidebar{padding:12px;border-left:1px solid rgba(255,255,255,0.03);display:flex;flex-direction:column;gap:12px}
+  .panel{background:rgba(255,255,255,0.02);padding:10px;border-radius:10px}
+  .leaderboard{max-height:360px;overflow:auto}
+  .leaderboard li{display:flex;justify-content:space-between;padding:8px 6px;border-bottom:1px dashed rgba(255,255,255,0.02);font-size:14px}
+  .center .status{font-size:14px;color:var(--muted)}
+  .footer{grid-column:1/-1;text-align:center;padding-top:8px;color:var(--muted);font-size:13px}
+  .flash{padding:8px;border-radius:8px}
+  .good{background:linear-gradient(90deg, rgba(46,204,113,0.12), rgba(64,196,164,0.06));color:var(--win)}
+  .bad{background:linear-gradient(90deg, rgba(255,107,107,0.08), rgba(255,107,107,0.03));color:var(--lose)}
+  @media (max-width:880px){ .card{grid-template-columns:1fr} .sidebar{border-left:none} .tiles{gap:8px} .tile{width:56px;height:56px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" role="application" aria-label="Sequence Sprint mind game">
+    <header>
+      <div>
+        <h1>Sequence Sprint</h1>
+        <div class="muted">Fast rounds • remember the pattern • beat the clock</div>
+      </div>
+      <div class="meta">
+        <div id="bestLabel" class="muted">Best: —</div>
+        <div style="width:12px"></div>
+        <button id="settingsBtn" class="ghost">Settings</button>
+      </div>
+    </header>
+
+    <!-- LEFT / MAIN -->
+    <main class="left center" id="main">
+      <div class="panel" style="width:100%;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div class="muted">Round</div>
+          <div id="roundInfo" class="bigscore">— / —</div>
+        </div>
+        <div style="text-align:right">
+          <div class="muted">Score</div>
+          <div id="scoreInfo" class="bigscore">0</div>
+        </div>
+      </div>
+
+      <div id="gameArea" style="width:100%;max-width:740px">
+        <div id="message" class="hint" style="margin:12px 0;text-align:center">Press <strong>Start</strong> to play. Use keys 1–8 or click tiles to enter; Backspace to undo.</div>
+
+        <div id="revealBox" class="panel" style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:12px">
+          <div class="muted">Memorize sequence</div>
+          <div id="revealTiles" class="tiles" aria-hidden="false"></div>
+          <div id="revealTimer" class="muted">—</div>
+        </div>
+
+        <div class="panel" style="padding:14px;margin-bottom:8px">
+          <div style="display:flex;justify-content:center;margin-bottom:8px">
+            <div class="muted">Your input</div>
+          </div>
+          <div id="inputTiles" class="tiles" aria-live="polite"></div>
+          <div style="display:flex;justify-content:center;margin-top:10px">
+            <div id="progress" class="muted">0 / 0</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
+          <div class="controls">
+            <button id="startBtn" class="btn">Start</button>
+            <button id="submitBtn" class="ghost">Submit</button>
+            <button id="clearBtn" class="ghost">Clear</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- RIGHT / SIDEBAR -->
+    <aside class="sidebar">
+      <div class="panel">
+        <div class="muted">Game Settings</div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-direction:column;">
+          <label class="muted">Rounds
+            <select id="roundsSelect">
+              <option value="3">3</option>
+              <option value="5" selected>5</option>
+              <option value="8">8</option>
+            </select>
+          </label>
+          <label class="muted">Start sequence length
+            <select id="startLen">
+              <option value="3">3</option>
+              <option value="4" selected>4</option>
+              <option value="5">5</option>
+            </select>
+          </label>
+          <label class="muted">Reveal time (sec)
+            <input id="revealSec" type="number" min="1" max="10" step="1" value="3" />
+          </label>
+          <label class="muted">Difficulty growth (every N rounds)
+            <input id="growEvery" type="number" min="1" max="4" step="1" value="2" />
+          </label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="muted">Local Leaderboard</div>
+        <ul id="leaderboard" class="leaderboard" aria-live="polite"></ul>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="resetScores" class="ghost">Reset Scores</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="muted">Controls</div>
+        <div style="font-size:13px;margin-top:8px" class="muted">
+          Keys 1–8 to enter numbers, Backspace to remove last, Enter to submit.
+        </div>
+        <div style="margin-top:8px" class="muted">This is a client-only demo. For multiplayer/persistence, use a server.</div>
+      </div>
+    </aside>
+
+    <div class="footer">Made for speed and memory — built quick so you can iterate. <span id="version" class="muted">v1.0</span></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // Utility functions
+  const $ = sel => document.querySelector(sel);
+  const $all = sel => Array.from(document.querySelectorAll(sel));
+  const uid = () => Math.random().toString(36).slice(2,9);
+  const STORAGE_KEY = 'seqsprint-scores-v1';
+  const state = {
+    running:false, round:0, rounds:5, startLen:4, revealSec:3, growEvery:2,
+    seed: uid(), sequence:[], playerAnswer:[], score:0, best: null
+  };
+
+  // Elements
+  const startBtn = $('#startBtn');
+  const submitBtn = $('#submitBtn');
+  const clearBtn = $('#clearBtn');
+  const revealTiles = $('#revealTiles');
+  const revealTimer = $('#revealTimer');
+  const inputTiles = $('#inputTiles');
+  const progress = $('#progress');
+  const roundInfo = $('#roundInfo');
+  const scoreInfo = $('#scoreInfo');
+  const message = $('#message');
+  const roundsSelect = $('#roundsSelect');
+  const startLenEl = $('#startLen');
+  const revealSecEl = $('#revealSec');
+  const growEveryEl = $('#growEvery');
+  const leaderboardEl = $('#leaderboard');
+  const bestLabel = $('#bestLabel');
+  const resetScoresBtn = $('#resetScores');
+
+  // Init from UI
+  function loadSettingsToState(){
+    state.rounds = Number(roundsSelect.value);
+    state.startLen = Number(startLenEl.value);
+    state.revealSec = Number(revealSecEl.value);
+    state.growEvery = Number(growEveryEl.value);
+  }
+
+  roundsSelect.addEventListener('change', loadSettingsToState);
+  startLenEl.addEventListener('change', loadSettingsToState);
+  revealSecEl.addEventListener('change', loadSettingsToState);
+  growEveryEl.addEventListener('change', loadSettingsToState);
+
+  // Local leaderboard persistence
+  function readScores(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch(e){ return []; }
+  }
+  function writeScores(list){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    renderLeaderboard();
+  }
+  function addScoreEntry(score){
+    const list = readScores();
+    list.push({score, date: Date.now()});
+    list.sort((a,b)=>b.score - a.score);
+    writeScores(list.slice(0,20));
+    state.best = list[0]?.score ?? state.best;
+    updateBestLabel();
+  }
+  function resetScores(){
+    localStorage.removeItem(STORAGE_KEY);
+    renderLeaderboard();
+    state.best = null;
+    updateBestLabel();
+  }
+
+  resetScoresBtn.addEventListener('click', ()=> {
+    if (!confirm('Reset local leaderboard?')) return;
+    resetScores();
+  });
+
+  function renderLeaderboard(){
+    const list = readScores();
+    leaderboardEl.innerHTML = '';
+    if (!list.length) {
+      leaderboardEl.innerHTML = '<li class="muted">No scores yet — play to record!</li>';
+      return;
+    }
+    list.forEach((e, i) => {
+      const date = new Date(e.date);
+      const li = document.createElement('li');
+      li.innerHTML = `<span>#${i+1} — ${e.score}</span><span class="muted">${date.toLocaleString()}</span>`;
+      leaderboardEl.appendChild(li);
+    });
+  }
+
+  function updateBestLabel(){
+    bestLabel.textContent = 'Best: ' + (state.best == null ? '—' : state.best);
+  }
+
+  // Deterministic pseudo RNG from seed + round (simple LCG)
+  function seededSequence(seedString, length){
+    // simple 32-bit hash -> LCG
+    let h = 2166136261 >>> 0;
+    for (let i=0;i<seedString.length;i++){
+      h ^= seedString.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    const seq = [];
+    let x = h;
+    for (let i=0;i<length;i++){
+      // LCG params
+      x = (Math.imul(1103515245, x) + 12345) >>> 0;
+      seq.push((x % 8) + 1);
+    }
+    return seq;
+  }
+
+  // UI helpers
+  function renderReveal(seq){
+    revealTiles.innerHTML = '';
+    seq.forEach(n => {
+      const d = document.createElement('div');
+      d.className = 'tile';
+      d.textContent = n;
+      revealTiles.appendChild(d);
+    });
+  }
+  function renderInput(){
+    inputTiles.innerHTML = '';
+    for (let i=0;i<state.sequence.length;i++){
+      const t = document.createElement('div');
+      t.className = 'tile small';
+      const v = state.playerAnswer[i];
+      t.textContent = v !== undefined ? v : '—';
+      if (v !== undefined) t.classList.add('selected');
+      inputTiles.appendChild(t);
+    }
+    progress.textContent = `${state.playerAnswer.length} / ${state.sequence.length}`;
+  }
+
+  function setMessage(txt, isGood){
+    message.textContent = txt;
+    message.className = isGood ? 'flash good' : (isGood === false ? 'flash bad' : 'hint');
+  }
+
+  function updateHUD(){
+    roundInfo.textContent = `${state.round} / ${state.rounds}`;
+    scoreInfo.textContent = state.score;
+  }
+
+  // Game flow
+  let revealTimerHandle = null;
+  let roundStartTs = 0;
+  let revealed = false;
+
+  function startGame(){
+    if (state.running) return;
+    loadSettingsToState();
+    state.running = true;
+    state.round = 0;
+    state.score = 0;
+    state.seed = uid();
+    state.best = readScores()[0]?.score ?? state.best;
+    updateBestLabel();
+    updateHUD();
+    renderLeaderboard();
+    setMessage('Get ready!', true);
+    nextRound();
+  }
+
+  function nextRound(){
+    state.round++;
+    if (state.round > state.rounds){
+      endGame();
+      return;
+    }
+    // length grows every growEvery rounds
+    const extra = Math.floor((state.round - 1) / state.growEvery);
+    const length = state.startLen + extra;
+    state.sequence = seededSequence(state.seed + ':' + state.round, length);
+    state.playerAnswer = [];
+    revealed = true;
+    roundStartTs = Date.now();
+    updateHUD();
+    setMessage('Memorize the sequence — watch closely', null);
+    renderReveal(state.sequence);
+    renderInput();
+    // show reveal for configured seconds
+    const relMs = Math.max(700, state.revealSec * 1000);
+    revealTimer.innerText = `Revealing for ${Math.round(relMs/1000)}s`;
+    clearTimeout(revealTimerHandle);
+    revealTimerHandle = setTimeout(() => {
+      revealed = false;
+      hideReveal();
+      roundStartTs = Date.now(); // start timing for input
+      setMessage('Enter the sequence now (or press Enter to submit early)', null);
+      revealTimer.innerText = 'Input phase';
+      // auto-submit after a timeout: give players a fair input window = revealSec*2 + length*700ms
+      const autoTimeout = Math.max(3000, relMs * 2 + length * 700);
+      clearTimeout(revealTimerHandle);
+      revealTimerHandle = setTimeout(()=> {
+        submitAnswer();
+      }, autoTimeout);
+    }, relMs);
+  }
+
+  function hideReveal(){
+    // replace reveal tiles with placeholders
+    revealTiles.innerHTML = '';
+    for (let i=0;i<state.sequence.length;i++){
+      const d = document.createElement('div');
+      d.className = 'tile';
+      d.textContent = '•';
+      revealTiles.appendChild(d);
+    }
+  }
+
+  function pressNumber(n){
+    if (!state.running) { setMessage('Start the game first', false); return; }
+    if (state.playerAnswer.length >= state.sequence.length) return; // ignore extra
+    state.playerAnswer.push(n);
+    renderInput();
+  }
+
+  function clearInput(){
+    state.playerAnswer = [];
+    renderInput();
+  }
+
+  function undoInput(){
+    state.playerAnswer.pop();
+    renderInput();
+  }
+
+  function evaluateAnswer(ans, seq, timeMs){
+    // correctness score: each correct position = 100 points
+    // bonus for contiguous correct prefix and speed bonus
+    let correctCount = 0;
+    for (let i=0;i<seq.length;i++){
+      if (ans[i] === seq[i]) correctCount++;
+    }
+    // contiguous prefix length
+    let prefix = 0;
+    for (let i=0;i<seq.length;i++){
+      if (ans[i] === seq[i]) prefix++; else break;
+    }
+    let base = correctCount * 100;
+    let prefixBonus = prefix * 25;
+    // time bonus: faster = more. timeMs in ms. clamp
+    const clamp = Math.max(200, Math.min(timeMs, 60000));
+    const speedBonus = Math.round((10000 / clamp) * 10); // tuned factor
+    // penalty for wrong length
+    const lengthPenalty = Math.max(0, (seq.length - ans.length)) * 40;
+    const score = Math.max(0, Math.round(base + prefixBonus + speedBonus - lengthPenalty));
+    return {score, correctCount, prefix, speedBonus, timeMs};
+  }
+
+  function submitAnswer(){
+    if (!state.running) return;
+    // stop auto timers
+    clearTimeout(revealTimerHandle);
+    // compute time from roundStartTs
+    const timeMs = Math.max(1, Date.now() - roundStartTs);
+    // if no input, treat as empty
+    const ans = state.playerAnswer.slice();
+    const res = evaluateAnswer(ans, state.sequence, timeMs);
+    // update state
+    state.score += res.score;
+    updateHUD();
+    // show results
+    const expected = state.sequence.join(', ');
+    setMessage(`Round ${state.round} result — +${res.score} pts (correct ${res.correctCount}/${state.sequence.length})`, res.correctCount > 0 ? true : false);
+    // reveal expected for audit
+    revealTiles.innerHTML = '';
+    state.sequence.forEach(n=>{
+      const d = document.createElement('div'); d.className='tile'; d.textContent = n; revealTiles.appendChild(d);
+    });
+    // small details shown in input area
+    const info = document.createElement('div');
+    info.className = 'muted';
+    info.style.marginTop = '8px';
+    info.innerHTML = `Score: ${res.score} — prefix:${res.prefix} — speed bonus:${res.speedBonus} — time:${Math.round(res.timeMs)}ms`;
+    // append to input area as temporary message
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.appendChild(info);
+    // show for 1.6s then next round
+    setTimeout(()=> {
+      nextRound();
+    }, 1100);
+  }
+
+  function endGame(){
+    state.running = false;
+    setMessage(`Game over — total ${state.score} pts`, true);
+    addScoreEntry(state.score);
+    updateHUD();
+    // show final reveal empty
+    revealTiles.innerHTML = '';
+    inputTiles.innerHTML = '';
+  }
+
+  // Wire UI buttons
+  startBtn.addEventListener('click', ()=> startGame());
+  submitBtn.addEventListener('click', ()=> submitAnswer());
+  clearBtn.addEventListener('click', ()=> { clearInput(); setMessage('Cleared input', null); });
+
+  // Tile click for input (numbers 1..8)
+  function buildNumberPad(){
+    // also add keyboard support: create a small pad on the reveal area so clicks are possible
+    const pad = document.createElement('div');
+    pad.style.display = 'flex';
+    pad.style.flexWrap = 'wrap';
+    pad.style.justifyContent = 'center';
+    pad.style.gap = '8px';
+    pad.style.marginTop = '8px';
+    for (let i=1;i<=8;i++){
+      const b = document.createElement('div');
+      b.className = 'tile small';
+      b.textContent = i;
+      b.title = `Press ${i}`;
+      b.style.cursor = 'pointer';
+      b.addEventListener('click', ()=>{ pressNumber(i); });
+      pad.appendChild(b);
+    }
+    $('#revealBox').appendChild(pad);
+  }
+
+  buildNumberPad();
+
+  // Keyboard handling
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key >= '1' && ev.key <= '8'){
+      ev.preventDefault();
+      pressNumber(Number(ev.key));
+    } else if (ev.key === 'Backspace'){
+      ev.preventDefault();
+      undoInput();
+    } else if (ev.key === 'Enter'){
+      ev.preventDefault();
+      submitAnswer();
+    }
+  });
+
+  // Init
+  renderLeaderboard();
+  updateBestLabel();
+  updateHUD();
+
+  // small UX: hide submit if no input
+  setInterval(()=> {
+    submitBtn.style.display = state.playerAnswer.length ? '' : 'none';
+  }, 200);
+
+  // expose some functions for quick dev console tweaks
+  window.seqSprint = {
+    state,
+    startGame,
+    nextRound,
+    submitAnswer,
+    addScoreEntry,
+    seededSequence
+  };
+
+})();
+</script>
+</body>
+</html>
